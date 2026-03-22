@@ -1,167 +1,305 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
 type Hero = {
   id: string;
   name: string;
   slug: string;
-  description?: string;
-  image_url?: string;
-  power?: string;
-  core_trait?: string;
-  challenge?: string;
-  story?: string;
+  description?: string | null;
+  image_url?: string | null;
+  power?: string | null;
+  core_trait?: string | null;
+  challenge?: string | null;
+  story?: string | null;
+};
+
+type HeroUnlock = {
+  id: string;
+  user_id: string;
+  hero_id: string;
+  unlocked_at: string | null;
 };
 
 export default function HeroPage() {
   const router = useRouter();
   const params = useParams();
-
   const slug = params?.slug as string;
 
-  const [hero, setHero] = useState<Hero | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [hero, setHero] = useState<Hero | null>(null);
+  const [unlock, setUnlock] = useState<HeroUnlock | null>(null);
 
   useEffect(() => {
-    const loadHero = async () => {
+    const loadHeroPage = async () => {
       try {
-        // 1. Check user
         const {
           data: { user },
+          error: userError,
         } = await supabase.auth.getUser();
 
-        if (!user) {
+        if (userError || !user) {
           router.replace("/login");
           return;
         }
 
-        // 2. Get hero
         const { data: heroData, error: heroError } = await supabase
           .from("heroes")
           .select("*")
           .eq("slug", slug)
-          .maybeSingle();
+          .maybeSingle<Hero>();
 
-        if (heroError || !heroData) {
+        if (heroError) {
+          console.error("Hero fetch error:", heroError);
+          setMessage("Could not load hero.");
+          setLoading(false);
+          return;
+        }
+
+        if (!heroData) {
           setMessage("Hero not found.");
           setLoading(false);
           return;
         }
 
-        // 3. Check unlock
-        const { data: unlock } = await supabase
+        const { data: unlockData, error: unlockError } = await supabase
           .from("hero_unlocks")
           .select("*")
           .eq("user_id", user.id)
           .eq("hero_id", heroData.id)
-          .maybeSingle();
+          .maybeSingle<HeroUnlock>();
 
-        if (!unlock) {
+        if (unlockError) {
+          console.error("Unlock fetch error:", unlockError);
+          setMessage("Could not verify hero access.");
+          setLoading(false);
+          return;
+        }
+
+        if (!unlockData) {
           router.replace("/redeem");
           return;
         }
 
         setHero(heroData);
-      } catch (err) {
-        console.error(err);
-        setMessage("Something went wrong.");
+        setUnlock(unlockData);
+      } catch (error) {
+        console.error("Hero page error:", error);
+        setMessage("Something went wrong loading this page.");
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
-    loadHero();
+    loadHeroPage();
   }, [slug, router]);
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p>Loading hero...</p>
+      <main className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+        <p className="text-lg">Loading hero...</p>
       </main>
     );
   }
 
   if (!hero) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p>{message}</p>
+      <main className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+        <p className="text-lg">{message || "Hero not found."}</p>
       </main>
     );
   }
 
+  const storyTitle =
+    hero.slug === "tj" ? "Leadership Before Certainty" : `${hero.name} Story`;
+
+  const fallbackDescription =
+    hero.description ||
+    `${hero.name} is part of The Chosen universe. This hero unlock opens the door to story, identity, and leadership challenges.`;
+
+  const fallbackStory =
+    hero.story ||
+    `${hero.name} never expected ordinary life to open into something much bigger. But when mystery begins to break into the familiar, this hero discovers that courage is not about having all the answers. It is about stepping forward when the moment calls.`;
+
+  const fallbackChallenge =
+    hero.challenge || "Take one brave action before you feel fully ready.";
+
+  const fallbackPower = hero.power || "Unknown Power";
+  const fallbackCoreTrait = hero.core_trait || "Courage";
+
   return (
     <main className="min-h-screen bg-black text-white px-4 py-10">
-      <div className="max-w-4xl mx-auto space-y-10">
+      <div className="max-w-6xl mx-auto space-y-8">
+        <div>
+          <Link
+            href="/characters"
+            className="text-sm text-orange-400 hover:text-orange-300"
+          >
+            ← Back to characters
+          </Link>
+        </div>
 
-        {/* HERO HEADER */}
-        <section className="text-center space-y-4">
-          <h1 className="text-4xl font-bold">{hero.name}</h1>
-          <p className="text-lg text-gray-300">
-            The Reluctant Leader
-          </p>
+        <section className="rounded-3xl border border-blue-900/50 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-8 shadow-2xl shadow-blue-950/30">
+          <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
+            <div className="space-y-5">
+              <p className="text-sm uppercase tracking-[0.25em] text-orange-400">
+                Hero Unlocked
+              </p>
 
-          {hero.image_url && (
-            <img
-              src={hero.image_url}
-              alt={hero.name}
-              className="mx-auto rounded-xl shadow-lg max-h-[400px]"
-            />
-          )}
+              <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
+                {hero.name}
+              </h1>
+
+              <p className="text-2xl text-slate-300">
+                {hero.slug === "tj" ? "The Reluctant Leader" : fallbackDescription}
+              </p>
+
+              <p className="text-lg leading-8 text-slate-300">
+                {fallbackDescription}
+              </p>
+
+              <div className="flex gap-3 flex-wrap pt-2">
+                <Link
+                  href="/my-heroes"
+                  className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-5 py-3 font-semibold text-black hover:bg-orange-400"
+                >
+                  View Collection
+                </Link>
+
+                <Link
+                  href="/characters"
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-600 px-5 py-3 font-semibold text-white hover:bg-white/5"
+                >
+                  Meet the Heroes
+                </Link>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 pt-4">
+                <div className="rounded-2xl border border-slate-700 bg-black/30 p-5">
+                  <p className="text-sm text-slate-400 mb-2">Status</p>
+                  <p className="text-2xl font-semibold text-green-400">Unlocked</p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-700 bg-black/30 p-5">
+                  <p className="text-sm text-slate-400 mb-2">Unlocked At</p>
+                  <p className="text-lg font-semibold">
+                    {unlock?.unlocked_at
+                      ? new Date(unlock.unlocked_at).toLocaleString()
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-blue-800/40 bg-gradient-to-b from-slate-900 to-slate-950 p-6">
+              {hero.image_url ? (
+                <img
+                  src={hero.image_url}
+                  alt={hero.name}
+                  className="w-full max-h-[520px] object-contain rounded-2xl"
+                />
+              ) : (
+                <div className="min-h-[420px] rounded-2xl border border-dashed border-slate-600 flex items-center justify-center text-slate-500 text-lg">
+                  {hero.name} artwork placeholder
+                </div>
+              )}
+
+              <div className="mt-5 space-y-3 text-sm text-slate-300">
+                <p>
+                  <span className="font-semibold text-white">Collectible:</span>{" "}
+                  Hero Pack unlock
+                </p>
+                <p>
+                  <span className="font-semibold text-white">Power:</span>{" "}
+                  {fallbackPower}
+                </p>
+                <p>
+                  <span className="font-semibold text-white">Core Trait:</span>{" "}
+                  {fallbackCoreTrait}
+                </p>
+                <p>
+                  <span className="font-semibold text-white">Includes:</span>{" "}
+                  story access, character profile, leadership challenge
+                </p>
+              </div>
+            </div>
+          </div>
         </section>
 
-        {/* STORY SECTION */}
-        <section className="bg-gray-900 rounded-2xl p-6 space-y-4">
-          <h2 className="text-2xl font-bold text-yellow-400">
-            Leadership Before Certainty
-          </h2>
+        <section className="rounded-3xl border border-blue-900/50 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-8 shadow-xl">
+          <h2 className="text-3xl font-bold text-yellow-400 mb-5">{storyTitle}</h2>
 
-          <p className="text-gray-300 leading-relaxed">
-            {hero.story ||
-              "TJ never set out to lead. But when everything began to fall apart, he was the one who stepped forward."}
-          </p>
+          <div className="space-y-5 text-lg leading-9 text-slate-300">
+            {fallbackStory.split("\n").map((paragraph, index) => (
+              <p key={index}>{paragraph}</p>
+            ))}
+          </div>
         </section>
 
-        {/* POWER + TRAITS */}
-        <section className="grid md:grid-cols-2 gap-4">
+        <section className="rounded-3xl border border-blue-900/50 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-8 shadow-xl">
+          <h2 className="text-3xl font-bold mb-5">Leadership Challenge</h2>
 
-          <div className="bg-gray-900 rounded-2xl p-5">
-            <h3 className="text-lg font-semibold text-blue-400 mb-2">
-              Power
-            </h3>
-            <p>{hero.power || "Storm Energy ⚡"}</p>
+          <p className="text-lg leading-8 text-slate-300 mb-6">
+            {fallbackChallenge}
+          </p>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-700 bg-black/30 p-5">
+              <p className="text-sm text-slate-400 mb-2">Challenge Power</p>
+              <p className="text-xl font-semibold text-blue-400">{fallbackPower}</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700 bg-black/30 p-5">
+              <p className="text-sm text-slate-400 mb-2">Leadership Trait</p>
+              <p className="text-xl font-semibold text-green-400">
+                {fallbackCoreTrait}
+              </p>
+            </div>
           </div>
 
-          <div className="bg-gray-900 rounded-2xl p-5">
-            <h3 className="text-lg font-semibold text-green-400 mb-2">
-              Core Trait
-            </h3>
-            <p>{hero.core_trait || "Responsibility"}</p>
+          <div className="mt-6 rounded-2xl bg-gradient-to-r from-yellow-400 via-orange-400 to-orange-500 px-6 py-5 text-black">
+            <p className="text-sm uppercase tracking-[0.2em] font-semibold mb-2">
+              Challenge
+            </p>
+            <p className="text-2xl font-bold">{fallbackChallenge}</p>
           </div>
-
         </section>
 
-        {/* CHALLENGE */}
-        <section className="bg-gradient-to-r from-yellow-500 to-orange-500 text-black rounded-2xl p-6 text-center">
-          <h3 className="text-xl font-bold mb-2">
-            Challenge
-          </h3>
+        <section className="rounded-3xl border border-blue-900/50 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-8 shadow-xl">
+          <h2 className="text-3xl font-bold mb-4">Collection Marker</h2>
 
-          <p className="text-lg font-medium">
-            {hero.challenge || "Lead Before You Feel Ready"}
+          <p className="text-lg leading-8 text-slate-300 mb-6">
+            {hero.name} is now in your collection. As more heroes unlock across The
+            Chosen universe, your collection will grow into a full story journey of
+            characters, powers, and leadership moments.
           </p>
+
+          <div className="flex gap-3 flex-wrap">
+            <Link
+              href="/my-heroes"
+              className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 font-semibold text-black hover:bg-slate-200"
+            >
+              Go to Collection Dashboard
+            </Link>
+
+            <Link
+              href="/redeem"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-600 px-5 py-3 font-semibold text-white hover:bg-white/5"
+            >
+              Redeem Another Code
+            </Link>
+          </div>
         </section>
 
-        {/* CTA */}
-        <section className="text-center text-gray-400">
-          <p className="text-sm tracking-wide">
+        <section className="text-center pt-2">
+          <p className="text-lg tracking-wide text-slate-400">
             Scan. Unlock. Become.
           </p>
         </section>
-
       </div>
     </main>
   );

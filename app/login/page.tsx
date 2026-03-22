@@ -1,16 +1,54 @@
+"use client";
+
+import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+
+  const handleLogin = async () => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setMessage("Login successful!");
+    }
+  };
+
   return (
-    <main className="min-h-screen bg-white text-gray-900">
-      <section className="mx-auto max-w-2xl px-6 py-16">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-600">
+    <main className="min-h-screen bg-white text-gray-900 flex items-center justify-center">
+      <div className="max-w-md w-full p-6 border rounded-2xl">
+        <h1 className="text-2xl font-bold mb-4">Login</h1>
+
+        <input
+          type="email"
+          placeholder="Email"
+          className="w-full border p-2 rounded mb-3"
+          onChange={(e) => setEmail(e.target.value)}
+        />
+
+        <input
+          type="password"
+          placeholder="Password"
+          className="w-full border p-2 rounded mb-4"
+          onChange={(e) => setPassword(e.target.value)}
+        />
+
+        <button
+          onClick={handleLogin}
+          className="w-full bg-black text-white py-2 rounded"
+        >
           Login
-        </p>
-        <h1 className="mt-3 text-4xl font-bold">Welcome back</h1>
-        <p className="mt-4 text-gray-600">
-          This page is a placeholder for now. We will connect it to Supabase
-          Auth in the next backend step.
-        </p>
-      </section>
+        </button>
+
+        {message && <p className="mt-4 text-sm">{message}</p>}
+      </div>
     </main>
   );
 }

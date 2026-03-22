@@ -16,21 +16,30 @@ export default function LoginPage() {
     setLoading(true);
     setMessage("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (error) {
-      setMessage(error.message);
+      if (error) {
+        setMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!data.session) {
+        setMessage("Login worked, but no session was created. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      setMessage("Login successful! Redirecting...");
+      router.replace("/redeem");
+    } catch (error) {
+      console.error("Login error:", error);
+      setMessage("Something went wrong during login.");
       setLoading(false);
-    } else {
-      setMessage("Login successful!");
-
-      // 🔥 Redirect after login
-      setTimeout(() => {
-        router.push("/redeem");
-      }, 500);
     }
   };
 
@@ -64,9 +73,7 @@ export default function LoginPage() {
         </button>
 
         {message && (
-          <p className="mt-4 text-sm text-center text-gray-700">
-            {message}
-          </p>
+          <p className="mt-4 text-sm text-center text-gray-700">{message}</p>
         )}
       </div>
     </main>

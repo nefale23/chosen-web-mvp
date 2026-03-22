@@ -4,6 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
+type HeroUnlock = {
+  hero_id: string;
+  unlocked_at: string;
+};
+
+type Hero = {
+  id: string;
+  slug: string;
+  name: string;
+};
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -28,13 +39,55 @@ export default function LoginPage() {
         return;
       }
 
-      if (!data.session) {
+      if (!data.session || !data.user) {
         setMessage("Login worked, but no session was created. Please try again.");
         setLoading(false);
         return;
       }
 
-      setMessage("Login successful! Redirecting...");
+      const user = data.user;
+
+      setMessage("Login successful! Checking your unlocked heroes...");
+
+      // 1. Check whether this user has already unlocked a hero
+      const { data: unlocks, error: unlocksError } = await supabase
+        .from("hero_unlocks")
+        .select("hero_id, unlocked_at")
+        .eq("user_id", user.id)
+        .order("unlocked_at", { ascending: true })
+        .limit(1);
+
+      if (unlocksError) {
+        console.error("Unlock lookup error:", unlocksError);
+        setMessage("Logged in, but could not check unlocks. Sending you to redeem.");
+        router.replace("/redeem");
+        return;
+      }
+
+      // 2. If they already unlocked a hero, send them there
+      if (unlocks && unlocks.length > 0) {
+        const firstUnlock = unlocks[0] as HeroUnlock;
+
+        const { data: hero, error: heroError } = await supabase
+          .from("heroes")
+          .select("id, slug, name")
+          .eq("id", firstUnlock.hero_id)
+          .maybeSingle<Hero>();
+
+        if (heroError) {
+          console.error("Hero lookup error:", heroError);
+          setMessage("Logged in, but could not load your hero. Sending you to redeem.");
+          router.replace("/redeem");
+          return;
+        }
+
+        if (hero?.slug) {
+          router.replace(`/heroes/${hero.slug}`);
+          return;
+        }
+      }
+
+      // 3. No unlock found yet → go redeem
       router.replace("/redeem");
     } catch (error) {
       console.error("Login error:", error);

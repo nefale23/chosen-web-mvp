@@ -30,14 +30,14 @@ export default function TJHeroPage() {
   useEffect(() => {
     const loadPage = async () => {
       try {
-        // 1. Check logged-in user
+        // 1. Check user
         const {
           data: { user },
           error: userError,
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push("/login");
+          router.replace("/login");
           return;
         }
 
@@ -46,9 +46,16 @@ export default function TJHeroPage() {
           .from("heroes")
           .select("*")
           .eq("slug", "tj")
-          .single();
+          .maybeSingle<Hero>();
 
-        if (heroError || !heroData) {
+        if (heroError) {
+          console.error("Hero load error:", heroError);
+          setErrorMessage(`TJ hero load failed: ${heroError.message}`);
+          setLoading(false);
+          return;
+        }
+
+        if (!heroData) {
           setErrorMessage("TJ hero data was not found.");
           setLoading(false);
           return;
@@ -56,28 +63,29 @@ export default function TJHeroPage() {
 
         setHero(heroData);
 
-        // 3. Check if this user has unlocked TJ
+        // 3. Check unlock
         const { data: unlockData, error: unlockError } = await supabase
           .from("hero_unlocks")
           .select("*")
           .eq("user_id", user.id)
           .eq("hero_id", heroData.id)
-          .maybeSingle();
+          .maybeSingle<HeroUnlock>();
 
         if (unlockError) {
-          setErrorMessage("Could not verify your unlock status.");
+          console.error("Unlock check error:", unlockError);
+          setErrorMessage(`Could not verify unlock status: ${unlockError.message}`);
           setLoading(false);
           return;
         }
 
         if (!unlockData) {
-          router.push("/redeem");
+          router.replace("/redeem");
           return;
         }
 
         setUnlock(unlockData);
       } catch (error) {
-        console.error(error);
+        console.error("TJ page load error:", error);
         setErrorMessage("Something went wrong loading TJ's page.");
       } finally {
         setLoading(false);
@@ -141,14 +149,14 @@ export default function TJHeroPage() {
           <h2 className="text-2xl font-bold mb-3">TJ Story</h2>
           <div className="space-y-4 text-gray-700 leading-7">
             <p>
-              TJ never expected that ordinary life could open into something
-              much bigger. But when mystery begins to break into the familiar,
-              he discovers that courage is not about having all the answers.
+              TJ never expected that ordinary life could open into something much
+              bigger. But when mystery begins to break into the familiar, he
+              discovers that courage is not about having all the answers.
             </p>
             <p>
               It is about stepping forward when the moment calls. His journey
-              begins with uncertainty, but also with purpose, friendship, and
-              the first signs that he is part of something epic.
+              begins with uncertainty, but also with purpose, friendship, and the
+              first signs that he is part of something epic.
             </p>
             <p>
               This is only the beginning of TJ’s path. As you continue, more of
@@ -161,8 +169,8 @@ export default function TJHeroPage() {
           <h2 className="text-2xl font-bold mb-3">Leadership Challenge</h2>
           <p className="text-gray-700 mb-4">
             This week’s challenge: take one brave action you have been avoiding.
-            It can be starting something important, speaking up, helping
-            someone, or taking responsibility where it matters.
+            It can be starting something important, speaking up, helping someone,
+            or taking responsibility where it matters.
           </p>
 
           <div className="border rounded-xl p-4 mb-4">
@@ -184,8 +192,8 @@ export default function TJHeroPage() {
         <section className="border rounded-2xl p-6 shadow-sm">
           <h2 className="text-2xl font-bold mb-3">Collection Marker</h2>
           <p className="text-gray-700">
-            TJ is now in your collection. Later, this page will connect into
-            your wider collection dashboard with locked, unlocked, and completed
+            TJ is now in your collection. Later, this page will connect into your
+            wider collection dashboard with locked, unlocked, and completed
             status across all heroes.
           </p>
         </section>

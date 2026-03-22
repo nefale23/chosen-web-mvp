@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -18,19 +19,29 @@ type HeroUnlock = {
   unlocked_at?: string | null;
 };
 
+type ChallengeProgress = {
+  id: string;
+  user_id: string;
+  hero_slug: string;
+  challenge_key: string;
+  is_completed: boolean;
+  completed_at?: string | null;
+};
+
 export default function TJHeroPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [hero, setHero] = useState<Hero | null>(null);
   const [unlock, setUnlock] = useState<HeroUnlock | null>(null);
-  const [challengeDone, setChallengeDone] = useState(false);
+  const [challengeProgress, setChallengeProgress] =
+    useState<ChallengeProgress | null>(null);
+  const [savingChallenge, setSavingChallenge] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     const loadPage = async () => {
       try {
-        // 1. Check user
         const {
           data: { user },
           error: userError,
@@ -41,7 +52,6 @@ export default function TJHeroPage() {
           return;
         }
 
-        // 2. Load TJ hero
         const { data: heroData, error: heroError } = await supabase
           .from("heroes")
           .select("*")
@@ -63,7 +73,6 @@ export default function TJHeroPage() {
 
         setHero(heroData);
 
-        // 3. Check unlock
         const { data: unlockData, error: unlockError } = await supabase
           .from("hero_unlocks")
           .select("*")
@@ -84,6 +93,20 @@ export default function TJHeroPage() {
         }
 
         setUnlock(unlockData);
+
+        const { data: progressData, error: progressError } = await supabase
+          .from("user_challenge_progress")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("hero_slug", "tj")
+          .eq("challenge_key", "first-brave-action")
+          .maybeSingle<ChallengeProgress>();
+
+        if (progressError) {
+          console.error("Challenge progress load error:", progressError);
+        } else if (progressData) {
+          setChallengeProgress(progressData);
+        }
       } catch (error) {
         console.error("TJ page load error:", error);
         setErrorMessage("Something went wrong loading TJ's page.");
@@ -94,6 +117,54 @@ export default function TJHeroPage() {
 
     loadPage();
   }, [router]);
+
+  const handleCompleteChallenge = async () => {
+    try {
+      setSavingChallenge(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        router.replace("/login");
+        return;
+      }
+
+      const payload = {
+        user_id: user.id,
+        hero_slug: "tj",
+        challenge_key: "first-brave-action",
+        is_completed: true,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("user_challenge_progress")
+        .upsert(payload, {
+          onConflict: "user_id,hero_slug,challenge_key",
+        })
+        .select()
+        .single<ChallengeProgress>();
+
+      if (error) {
+        console.error("Challenge save error:", error);
+        alert(`Could not save challenge: ${error.message}`);
+        return;
+      }
+
+      setChallengeProgress(data);
+    } catch (error) {
+      console.error("Challenge complete error:", error);
+      alert("Something went wrong saving your challenge.");
+    } finally {
+      setSavingChallenge(false);
+    }
+  };
+
+  const challengeDone = !!challengeProgress?.is_completed;
 
   if (loading) {
     return (
@@ -118,16 +189,27 @@ export default function TJHeroPage() {
     <main className="min-h-screen bg-white text-gray-900 px-4 py-10">
       <div className="max-w-3xl mx-auto space-y-8">
         <section className="border rounded-2xl p-6 shadow-sm">
-          <p className="text-sm uppercase tracking-wide text-gray-500 mb-2">
-            Hero Unlocked
-          </p>
-          <h1 className="text-3xl font-bold mb-3">
-            {hero?.name || "TJ"} — The First Epic Hero
-          </h1>
-          <p className="text-gray-700 mb-4">
-            Welcome into TJ’s world. You have successfully unlocked your first
-            collector experience.
-          </p>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm uppercase tracking-wide text-gray-500 mb-2">
+                Hero Unlocked
+              </p>
+              <h1 className="text-3xl font-bold mb-3">
+                {hero?.name || "TJ"} — The First Epic Hero
+              </h1>
+              <p className="text-gray-700 mb-4">
+                Welcome into TJ’s world. You have successfully unlocked your first
+                collector experience.
+              </p>
+            </div>
+
+            <Link
+              href="/collection"
+              className="border rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            >
+              View Collection
+            </Link>
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="border rounded-xl p-4">
@@ -178,24 +260,39 @@ export default function TJHeroPage() {
             <p className="font-semibold">
               {challengeDone ? "Completed" : "Not completed yet"}
             </p>
+            {challengeDone && challengeProgress?.completed_at && (
+              <p className="text-sm text-gray-500 mt-2">
+                Completed on {new Date(challengeProgress.completed_at).toLocaleString()}
+              </p>
+            )}
           </div>
 
           <button
-            onClick={() => setChallengeDone(true)}
-            disabled={challengeDone}
+            onClick={handleCompleteChallenge}
+            disabled={challengeDone || savingChallenge}
             className="bg-black text-white rounded-lg px-4 py-3 font-medium disabled:opacity-50"
           >
-            {challengeDone ? "Challenge Completed" : "Mark Challenge Complete"}
+            {savingChallenge
+              ? "Saving..."
+              : challengeDone
+              ? "Challenge Completed"
+              : "Mark Challenge Complete"}
           </button>
         </section>
 
         <section className="border rounded-2xl p-6 shadow-sm">
           <h2 className="text-2xl font-bold mb-3">Collection Marker</h2>
-          <p className="text-gray-700">
-            TJ is now in your collection. Later, this page will connect into your
-            wider collection dashboard with locked, unlocked, and completed
-            status across all heroes.
+          <p className="text-gray-700 mb-4">
+            TJ is now in your collection. Your dashboard will show whether heroes
+            are locked, unlocked, or completed.
           </p>
+
+          <Link
+            href="/collection"
+            className="inline-block bg-black text-white rounded-lg px-4 py-3 font-medium"
+          >
+            Go to Collection Dashboard
+          </Link>
         </section>
       </div>
     </main>

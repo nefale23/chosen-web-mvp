@@ -17,7 +17,6 @@ type Hero = {
   id: string;
   name: string;
   slug: string;
-  description?: string | null;
 };
 
 export default function RedeemPage() {
@@ -32,7 +31,7 @@ export default function RedeemPage() {
     setMessage("");
 
     try {
-      // 1. Confirm logged-in user
+      // 1. Get logged in user
       const {
         data: { user },
         error: userError,
@@ -61,8 +60,8 @@ export default function RedeemPage() {
         .maybeSingle<RedeemCode>();
 
       if (codeError) {
-        console.error("Code lookup error:", codeError);
-        setMessage(`Code lookup failed: ${codeError.message}`);
+        console.error(codeError);
+        setMessage("Error checking code.");
         setLoading(false);
         return;
       }
@@ -73,73 +72,69 @@ export default function RedeemPage() {
         return;
       }
 
-      // 3. Check if already redeemed
-      if (redeemCode.is_redeemed) {
-        setMessage("This code has already been redeemed.");
-        setLoading(false);
-        return;
-      }
-
-      // 4. Find hero
+      // 3. Find hero linked to code
       const { data: hero, error: heroError } = await supabase
         .from("heroes")
         .select("*")
         .eq("slug", redeemCode.hero_slug)
         .maybeSingle<Hero>();
 
-      if (heroError) {
-        console.error("Hero lookup error:", heroError);
-        setMessage(`Hero lookup failed: ${heroError.message}`);
+      if (heroError || !hero) {
+        console.error(heroError);
+        setMessage("Hero not found.");
         setLoading(false);
         return;
       }
 
-      if (!hero) {
-        setMessage("Hero not found for this code.");
+      // 4. Check if user already unlocked this hero
+      const { data: existingUnlock } = await supabase
+        .from("hero_unlocks")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("hero_id", hero.id)
+        .maybeSingle();
+
+      if (existingUnlock) {
+        setMessage("You already unlocked this hero. Redirecting...");
+        router.replace(`/heroes/${hero.slug}`);
         setLoading(false);
         return;
       }
 
-      // 5. Insert unlock record
-      const { error: unlockError } = await supabase.from("hero_unlocks").insert({
-        user_id: user.id,
-        hero_id: hero.id,
-        unlocked_at: new Date().toISOString(),
-      });
+      // 5. Insert unlock
+      const { error: unlockError } = await supabase
+        .from("hero_unlocks")
+        .insert({
+          user_id: user.id,
+          hero_id: hero.id,
+          unlocked_at: new Date().toISOString(),
+        });
 
       if (unlockError) {
-        // allow duplicate unlock case
-        const lowerMessage = unlockError.message.toLowerCase();
-        if (!lowerMessage.includes("duplicate") && !lowerMessage.includes("unique")) {
-          console.error("Unlock insert error:", unlockError);
-          setMessage(`Could not create unlock: ${unlockError.message}`);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // 6. Mark code redeemed
-      const { error: updateError } = await supabase
-        .from("redeem_codes")
-        .update({
-          is_redeemed: true,
-          redeemed_by: user.id,
-          redeemed_at: new Date().toISOString(),
-        })
-        .eq("id", redeemCode.id);
-
-      if (updateError) {
-        console.error("Code update error:", updateError);
-        setMessage(`Unlocked, but code update failed: ${updateError.message}`);
+        console.error(unlockError);
+        setMessage("Could not unlock hero.");
         setLoading(false);
         return;
       }
 
-      setMessage("Success! TJ unlocked.");
-      router.replace("/heroes/tj");
-    } catch (error) {
-      console.error("Redeem error:", error);
-      setMessage("Something went wrong. Please try again.");
+      // 6. Mark code as redeemed (only if not already)
+      if (!redeemCode.is_redeemed) {
+        await supabase
+          .from("redeem_codes")
+          .update({
+            is_redeemed: true,
+            redeemed_by: user.id,
+            redeemed_at: new Date().toISOString(),
+          })
+          .eq("id", redeemCode.id);
+      }
+
+      // 7. Success → redirect to correct hero
+      setMessage(`Success! ${hero.name} unlocked!`);
+      router.replace(`/heroes/${hero.slug}`);
+    } catch (err) {
+      console.error(err);
+      setMessage("Something went wrong.");
     }
 
     setLoading(false);
@@ -150,7 +145,7 @@ export default function RedeemPage() {
       <div className="max-w-md w-full border rounded-2xl p-6 shadow-sm">
         <h1 className="text-2xl font-bold mb-2">Redeem Your Hero Code</h1>
         <p className="text-sm text-gray-600 mb-6">
-          Enter the code from your Hero Pack to unlock your collector experience.
+          Enter your Hero Pack code to unlock your character.
         </p>
 
         <input
@@ -170,7 +165,9 @@ export default function RedeemPage() {
         </button>
 
         {message && (
-          <p className="mt-4 text-sm text-center text-gray-700">{message}</p>
+          <p className="mt-4 text-sm text-center text-gray-700">
+            {message}
+          </p>
         )}
 
         <p className="mt-4 text-xs text-center text-gray-500">

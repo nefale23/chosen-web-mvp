@@ -25,6 +25,7 @@ export default function AdminCodesPage() {
 
   const [codes, setCodes] = useState<RedeemCode[]>([]);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState<"success" | "error" | "">("");
   const [createLoading, setCreateLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
 
@@ -52,6 +53,7 @@ export default function AdminCodesPage() {
           setMessage(
             "Admin email is not configured. Add NEXT_PUBLIC_ADMIN_EMAIL in Vercel."
           );
+          setMessageType("error");
           setAuthorized(false);
           setCheckingAccess(false);
           setLoading(false);
@@ -71,6 +73,7 @@ export default function AdminCodesPage() {
       } catch (err) {
         console.error("Admin access check error:", err);
         setMessage("Something went wrong checking admin access.");
+        setMessageType("error");
         setCheckingAccess(false);
         setLoading(false);
       }
@@ -91,6 +94,7 @@ export default function AdminCodesPage() {
       if (error) {
         console.error("Load codes error:", error);
         setMessage(`Could not load codes: ${error.message}`);
+        setMessageType("error");
         return;
       }
 
@@ -98,6 +102,7 @@ export default function AdminCodesPage() {
     } catch (err) {
       console.error("Load codes unexpected error:", err);
       setMessage("Something went wrong loading codes.");
+      setMessageType("error");
     } finally {
       setTableLoading(false);
       setLoading(false);
@@ -113,12 +118,14 @@ export default function AdminCodesPage() {
   const handleCreateCodes = async () => {
     setCreateLoading(true);
     setMessage("");
+    setMessageType("");
 
     try {
       const trimmedSlug = heroSlug.trim().toLowerCase();
 
       if (!trimmedSlug) {
         setMessage("Please enter a hero slug.");
+        setMessageType("error");
         setCreateLoading(false);
         return;
       }
@@ -135,12 +142,14 @@ export default function AdminCodesPage() {
         if (error) {
           console.error("Create custom code error:", error);
           setMessage(`Could not create code: ${error.message}`);
+          setMessageType("error");
           setCreateLoading(false);
           return;
         }
 
         setCustomCode("");
-        setMessage(`Code created: ${codeValue}`);
+        setMessage(`Code created successfully: ${codeValue}`);
+        setMessageType("success");
         await loadCodes();
         setCreateLoading(false);
         return;
@@ -159,15 +168,18 @@ export default function AdminCodesPage() {
       if (error) {
         console.error("Bulk create codes error:", error);
         setMessage(`Could not create codes: ${error.message}`);
+        setMessageType("error");
         setCreateLoading(false);
         return;
       }
 
       setMessage(`${safeQty} code(s) created successfully.`);
+      setMessageType("success");
       await loadCodes();
     } catch (err) {
       console.error("Create codes unexpected error:", err);
       setMessage("Something went wrong creating codes.");
+      setMessageType("error");
     } finally {
       setCreateLoading(false);
     }
@@ -178,6 +190,7 @@ export default function AdminCodesPage() {
     if (!confirmed) return;
 
     setMessage("");
+    setMessageType("");
 
     try {
       const { error } = await supabase
@@ -192,14 +205,17 @@ export default function AdminCodesPage() {
       if (error) {
         console.error("Reset code error:", error);
         setMessage(`Could not reset code: ${error.message}`);
+        setMessageType("error");
         return;
       }
 
       setMessage(`Code reset: ${code}`);
+      setMessageType("success");
       await loadCodes();
     } catch (err) {
       console.error("Reset code unexpected error:", err);
       setMessage("Something went wrong resetting the code.");
+      setMessageType("error");
     }
   };
 
@@ -208,6 +224,7 @@ export default function AdminCodesPage() {
     if (!confirmed) return;
 
     setMessage("");
+    setMessageType("");
 
     try {
       const { error } = await supabase.from("redeem_codes").delete().eq("id", id);
@@ -215,14 +232,17 @@ export default function AdminCodesPage() {
       if (error) {
         console.error("Delete code error:", error);
         setMessage(`Could not delete code: ${error.message}`);
+        setMessageType("error");
         return;
       }
 
       setMessage(`Code deleted: ${code}`);
+      setMessageType("success");
       await loadCodes();
     } catch (err) {
       console.error("Delete code unexpected error:", err);
       setMessage("Something went wrong deleting the code.");
+      setMessageType("error");
     }
   };
 
@@ -259,7 +279,9 @@ export default function AdminCodesPage() {
           <p className="text-sm text-gray-600">
             This page is only available to the configured admin email.
           </p>
-          {message && <p className="mt-4 text-sm text-red-600">{message}</p>}
+          {message && (
+            <p className="mt-4 text-sm text-red-600">{message}</p>
+          )}
         </div>
       </main>
     );
@@ -362,7 +384,15 @@ export default function AdminCodesPage() {
             Otherwise it auto-generates codes using the hero slug.
           </p>
 
-          {message && <p className="text-sm text-gray-700">{message}</p>}
+          {message && (
+            <p
+              className={`text-sm ${
+                messageType === "error" ? "text-red-600" : "text-green-700"
+              }`}
+            >
+              {message}
+            </p>
+          )}
         </section>
 
         <section className="border rounded-2xl p-6 shadow-sm space-y-4">
@@ -390,6 +420,7 @@ export default function AdminCodesPage() {
                     <th className="text-left py-3 pr-4">Code</th>
                     <th className="text-left py-3 pr-4">Hero</th>
                     <th className="text-left py-3 pr-4">Status</th>
+                    <th className="text-left py-3 pr-4">Redeemed By</th>
                     <th className="text-left py-3 pr-4">Redeemed At</th>
                     <th className="text-left py-3 pr-4">Created</th>
                     <th className="text-left py-3 pr-4">Actions</th>
@@ -411,6 +442,7 @@ export default function AdminCodesPage() {
                           {item.is_redeemed ? "redeemed" : "available"}
                         </span>
                       </td>
+                      <td className="py-3 pr-4">{item.redeemed_by || "-"}</td>
                       <td className="py-3 pr-4">
                         {item.redeemed_at
                           ? new Date(item.redeemed_at).toLocaleString()
